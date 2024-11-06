@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Display UTM Grid with Leaflet</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.7.5/proj4.js"></script>
+    <style>
+        #map {
+            height: 600px;
+            width: 100%;
+        }
+        #controls {
+            margin: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <label for="startEasting">Start Easting:</label>
+        <input type="number" id="startEasting" value="500000"><br>
+        <label for="startNorthing">Start Northing:</label>
+        <input type="number" id="startNorthing" value="5200000"><br>
+        <label for="gridSize">Grid Size (meters):</label>
+        <input type="number" id="gridSize" value="1000"><br>
+        <label for="rows">Number of Rows:</label>
+        <input type="number" id="rows" value="10"><br>
+        <label for="cols">Number of Columns:</label>
+        <input type="number" id="cols" value="10"><br>
+        <button id="generateButton">Generate Grid</button>
+        <button id="exportButton">Export GeoJSON</button>
+    </div>
+    <div id="map"></div>
+    <script>
+        const proj4 = window.proj4;
+
+        const utmZone = 10; // UTM zone
+        const utmNorth = true; // Northern hemisphere
+
+        function utmToLatLng(easting, northing) {
+            const utmProj = `+proj=utm +zone=${utmZone} +${utmNorth ? 'north' : 'south'} +datum=WGS84`;
+            const wgs84Proj = '+proj=longlat +datum=WGS84 +no_defs';
+            return proj4(utmProj, wgs84Proj, [easting, northing]);
+        }
+
+        function generateGeoJSON(startEasting, startNorthing, gridSize, rows, cols) {
+            const features = [];
+
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < cols; col++) {
+                    const easting = startEasting + col * gridSize;
+                    const northing = startNorthing + row * gridSize;
+
+                    const [lng1, lat1] = utmToLatLng(easting, northing);
+                    const [lng2, lat2] = utmToLatLng(easting + gridSize, northing);
+                    const [lng3, lat3] = utmToLatLng(easting + gridSize, northing + gridSize);
+                    const [lng4, lat4] = utmToLatLng(easting, northing + gridSize);
+
+                    const coordinates = [
+                        [
+                            [lng1, lat1],
+                            [lng2, lat2],
+                            [lng3, lat3],
+                            [lng4, lat4],
+                            [lng1, lat1]
+                        ]
+                    ];
+
+                    const feature = {
+                        type: "Feature",
+                        geometry: {
+                            type: "Polygon",
+                            coordinates: coordinates
+                        },
+                        properties: {
+                            id: row * cols + col + 1
+                        }
+                    };
+
+                    features.push(feature);
+                }
+            }
+
+            return {
+                type: "FeatureCollection",
+                features: features
+            };
+        }
+
+        function updateMap(geoJSON) {
+            // Clear existing layers
+            map.eachLayer((layer) => {
+                if (layer instanceof L.GeoJSON) {
+                    map.removeLayer(layer);
+                }
+            });
+
+            // Add new GeoJSON layer
+            L.geoJSON(geoJSON).addTo(map);
+        }
+
+        function downloadGeoJSON(data, filename = 'data.geojson') {
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // Initialize the map
+        const map = L.map('map').setView([47.60, -122.33], 13);
+
+        // Add a tile layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        // Add event listener to the generate button
+        document.getElementById('generateButton').addEventListener('click', () => {
+            const startEasting = parseFloat(document.getElementById('startEasting').value);
+            const startNorthing = parseFloat(document.getElementById('startNorthing').value);
+            const gridSize = parseFloat(document.getElementById('gridSize').value);
+            const rows = parseInt(document.getElementById('rows').value);
+            const cols = parseInt(document.getElementById('cols').value);
+
+            const geoJSON = generateGeoJSON(startEasting, startNorthing, gridSize, rows, cols);
+            updateMap(geoJSON);
+        });
+
+        // Add event listener to the export button
+        document.getElementById('exportButton').addEventListener('click', () => {
+            const startEasting = parseFloat(document.getElementById('startEasting').value);
+            const startNorthing = parseFloat(document.getElementById('startNorthing').value);
+            const gridSize = parseFloat(document.getElementById('gridSize').value);
+            const rows = parseInt(document.getElementById('rows').value);
+            const cols = parseInt(document.getElementById('cols').value);
+
+            const geoJSON = generateGeoJSON(startEasting, startNorthing, gridSize, rows, cols);
+            downloadGeoJSON(geoJSON);
+        });
+    </script>
+</body>
+</html>
